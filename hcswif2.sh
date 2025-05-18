@@ -25,7 +25,7 @@ runHcana="hcana -q \"$script($run,$evt,1,$seg,$seg)\""
 #runHcana="hcana -q \"$script($run,$evt)\""
 
 #cd $hallc_replay_dir
-tar -xf nps_replay.tar.gz
+tar -xf lad_replay.tar.gz
 
 echo pwd: $(pwd)
 echo $runHcana
