@@ -36,7 +36,7 @@ sp18_raw_dir = "/mss/hallc/spring17/raw"
 sp19_raw_dir = "/mss/hallc/jpsi-007/raw"
 cafe_raw_dir = "/mss/hallc/c-cafe-2022/raw"
 nps_raw_dir = "/mss/hallc/c-nps/raw"
-lad_raw_dir = "/mss/hallc/c-lad/raw"
+lad_raw_dir = "/cache/hallc/c-lad/raw"
 if not os.path.isdir(sp22_raw_dir):
     warnings.warn("raw_dir: " + sp22_raw_dir + " does not exist")
 if not os.path.isdir(sp18_raw_dir):
@@ -466,7 +466,8 @@ def getReplayJobs(parsed_args, wf_name):
                 )
             ]
         else:
-            job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(run[2])])]
+            job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(0), str(run[2])])]
+            # run number, number of events, file type ID (hard coded for now), max segment
 
         jobs.append(copy.deepcopy(job))
 

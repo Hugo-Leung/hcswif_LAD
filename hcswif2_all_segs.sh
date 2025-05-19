@@ -1,14 +1,15 @@
 #!/usr/bin/bash
 
 ARGC=$#
-if [[ $ARGC -ne 4 ]]; then
+if [[ $ARGC -ne 5 ]]; then
     echo Usage: hcswif.sh SCRIPT RUN EVENTS SEGMENT
     exit 1
 fi;
 script=$1
 run=$2
 evt=$3
-seg=$4
+fileType=$4
+seg=$5
 
 # Setup environment
 hcswif_dir=$(dirname $(readlink -f $0))
@@ -21,7 +22,7 @@ if ! [ $(command -v hcana) ]; then
 fi
 
 # Replay the run
-runHcana="hcana -q \"$script($run,$evt,1,$seg,0)\""
+runHcana="hcana -q \"$script($run,$evt,$fileType,1,$seg,0)\""
 #runHcana="hcana -q \"$script($run,$evt)\""
 
 #cd $hallc_replay_dir
