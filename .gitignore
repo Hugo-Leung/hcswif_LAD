@@ -10,3 +10,4 @@ check_output/
 .ipynb_checkpoints/
 *~
 *.txt
+*.dat
