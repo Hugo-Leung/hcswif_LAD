@@ -6,13 +6,13 @@
 `swif2 status <workflow_name>`
 
 ## Submitting jobs
-`./hcswif.py --mode replay --spectrometer LAD_COIN --run file run-lists/some_runs.dat --name myswifjob`
+`./hcswif.py --mode replay --spectrometer LAD_COIN --run file run-lists/some_runs.dat --name myswifjob --time 345600 --all_segs true`
 
 `swif2 import -file myswifjob.json`
 
 `swif2 run myswifjob`
 
-`swif2 notify -workflow <workflow_name> -email <your_email> -when done,stalled`
+`swif2 notify -workflow <workflow_name> -email <your_email> -when done/stalled`
 
 ## Editing jobs
 `swif2 modify-jobs <workflow> -ram mult 2 -names -regexp '.*'`
@@ -23,6 +23,10 @@
 `swif2 cancel <workflow_name>`
 
 `swif2 cancel <workflow_name> -delete`
+
+## Generating run lists
+`./make_lad_runlist.sh start_run end_run n_segs_per_run`
+n_segs_per_run breaks up the run into multiple different runs with 'n_segs_per_run' runs each, to prevent MultiFileRun errors
 
 ## Other
 `jvolatile info c-lad`

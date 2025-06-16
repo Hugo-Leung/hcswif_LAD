@@ -258,20 +258,20 @@ def getReplayJobs(parsed_args, wf_name):
     else:
         evts = parsed_args.events[0]
 
-        if parsed_args.all_segs == None:
-            all_segs = False
-        elif parsed_args.all_segs[0].lower() == "true":
-            all_segs = True
-            # all_segs = False #Currently don't want things in MSS
-        elif parsed_args.all_segs[0].lower() == "false":
-            all_segs = False
-        else:
-            raise RuntimeError("all_segs must be True or False")
+    if parsed_args.all_segs == None:
+        all_segs = False
+    elif parsed_args.all_segs[0].lower() == "true":
+        all_segs = True
+        # all_segs = False #Currently don't want things in MSS
+    elif parsed_args.all_segs[0].lower() == "false":
+        all_segs = False
+    else:
+        raise RuntimeError("all_segs must be True or False")
 
     # Which hcswif shell script should we use? bash or csh?
     if parsed_args.shell == None:
         if all_segs == True:
-            batch = os.path.join(hcswif_dir, "hcswif2_all_segs.sh")
+            batch = os.path.join(hcswif_dir, "hcswif2_n_segs.sh")
         else:
             batch = os.path.join(hcswif_dir, "hcswif2.sh")
     elif re.search("bash", parsed_args.shell[0]):
@@ -372,7 +372,7 @@ def getReplayJobs(parsed_args, wf_name):
 
         # LHE: Not sure what this does
         if parsed_args.specify_replay == None:
-            specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay.tar.gz")
+            specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay_versions/lad_replay_v1.0.1.tar.gz")
             if not os.path.isfile(specify_replay):
                 raise ValueError("No default replay TAR found.")
         else:
@@ -402,8 +402,8 @@ def getReplayJobs(parsed_args, wf_name):
         tmp_disk = 1000000000
         if all_segs == True:
             last_seg = run[2] + 1
-            first_seg = 0
-            tmp_disk = 20000000000 * run[2] + 30000000000
+            first_seg = run[3]
+            tmp_disk = 40000000000 * (run[2]-run[3]) + 30000000000
             for seg in range(first_seg, last_seg):
                 coda = os.path.join(raw_dir, coda_stem + ".dat." + str(seg))
                 if not os.path.isfile(coda):
@@ -445,6 +445,7 @@ def getReplayJobs(parsed_args, wf_name):
         # job['disk_bytes'] =
         # This is for segment jobs.
         # job['disk_bytes'] = 2*run[1] + 30000000000
+        #LHE: Need to figure out how to get correct disk space for replay jobs.
         job["disk_bytes"] = tmp_disk
         # if spectrometer.upper()=='NPS_PROD':
         # job['time_secs'] = int((run[2] / 6000 / 75)*1.2)
@@ -466,7 +467,7 @@ def getReplayJobs(parsed_args, wf_name):
                 )
             ]
         else:
-            job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(0), str(run[2])])]
+            job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(0), str(run[2]), str(run[3])])]
             # run number, number of events, file type ID (hard coded for now), max segment
 
         jobs.append(copy.deepcopy(job))
@@ -478,7 +479,8 @@ def getReplayJobs(parsed_args, wf_name):
 def getReplayRuns(run_args, disk_args):
     runs = []
     disk = []
-    seg = []
+    seg_end = []
+    seg_start = []
     antecedent = []
     # User specified a file containing runs
     if run_args[0] == "file":
@@ -492,8 +494,9 @@ def getReplayRuns(run_args, disk_args):
             splitted = line.split(" ")
             if len(splitted) > 1:
                 run = splitted[0]
-                seg = splitted[1]
-                disk = splitted[2]
+                seg_end = splitted[1]
+                seg_start = splitted[2]
+                disk = splitted[3]
             else:
                 run = line.strip("\n")
                 if disk_args == None:
@@ -501,9 +504,10 @@ def getReplayRuns(run_args, disk_args):
                     disk = int(disk_bytes)
                 else:
                     disk = int(disk_args[0])
-                seg = ""
+                seg_end = ""
+                seg_start = ""
             if len(run) > 0:
-                runs.append([int(run), int(disk), int(seg)])
+                runs.append([int(run), int(disk), int(seg_end), int(seg_start)])
 
     # Arguments are either individual runs or ranges of runs. We check with a regex
     else:
@@ -636,7 +640,7 @@ def addCommonJobInfo(workflow, parsed_args):
 
     # RAM in bytes
     if parsed_args.ram == None:
-        ram_bytes = 2500000000
+        ram_bytes = 5000000000
     else:
         ram_bytes = int(parsed_args.ram[0])
 
