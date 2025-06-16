@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 ARGC=$#
-if [[ $ARGC -ne 5 ]]; then
+if [[ $ARGC -ne 6 ]]; then
     echo Usage: hcswif.sh SCRIPT RUN EVENTS SEGMENT
     exit 1
 fi;

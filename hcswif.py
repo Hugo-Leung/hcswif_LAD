@@ -292,7 +292,17 @@ def getReplayJobs(parsed_args, wf_name):
 
         # Assume coda stem looks like shms_all_XXXXX, hms_all_XXXXX, or coin_all_XXXXX
         if "lad" in spectrometer.lower():
-            coda_stem = "lad_Production_" + str(run[0]).zfill(4)
+            run_types = [
+                "lad_Production",
+                "lad_Production_noGEM",
+                "lad_LADwGEMwROC2",
+                "lad_GEMonly",
+                "lad_LADonly",
+                "lad_SHMS_HMS",
+                "lad_SHMS",
+                "lad_HMS",
+            ]
+            coda_stem = run_types[run[4]]+"_" + str(run[0]).zfill(4)
         elif "coin" in spectrometer.lower():
             # shms_coin and hms_coin use same coda files as coin
             coda_stem = "nps_coin_" + str(run[0]).zfill(4)
@@ -372,7 +382,8 @@ def getReplayJobs(parsed_args, wf_name):
 
         # LHE: Not sure what this does
         if parsed_args.specify_replay == None:
-            specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay_versions/lad_replay_v1.0.1.tar.gz")
+            # specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay_versions/lad_replay_v1.0.2.tar.gz")
+            specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay.tar.gz")
             if not os.path.isfile(specify_replay):
                 raise ValueError("No default replay TAR found.")
         else:
@@ -393,7 +404,7 @@ def getReplayJobs(parsed_args, wf_name):
 
         job["name"] = wf_name + "_" + coda_stem + ".dat." + str(run[2])
         job["constraint"] = processConstraints(parsed_args.constraint)
-        job["name"] = wf_name + "_" + coda_stem
+        # job["name"] = wf_name + "_" + coda_stem
         job["inputs"] = [{}]
         job["inputs"][0]["local"] = "lad_replay.tar.gz"
         job["inputs"][0]["remote"] = specify_replay
@@ -467,7 +478,7 @@ def getReplayJobs(parsed_args, wf_name):
                 )
             ]
         else:
-            job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(0), str(run[2]), str(run[3])])]
+            job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(run[4]), str(run[2]), str(run[3])])]
             # run number, number of events, file type ID (hard coded for now), max segment
 
         jobs.append(copy.deepcopy(job))
@@ -496,7 +507,8 @@ def getReplayRuns(run_args, disk_args):
                 run = splitted[0]
                 seg_end = splitted[1]
                 seg_start = splitted[2]
-                disk = splitted[3]
+                run_type = splitted[3]
+                disk = splitted[4]
             else:
                 run = line.strip("\n")
                 if disk_args == None:
@@ -506,8 +518,9 @@ def getReplayRuns(run_args, disk_args):
                     disk = int(disk_args[0])
                 seg_end = ""
                 seg_start = ""
+                run_type = ""  # Default run type is 0, i.e. no special type
             if len(run) > 0:
-                runs.append([int(run), int(disk), int(seg_end), int(seg_start)])
+                runs.append([int(run), int(disk), int(seg_end), int(seg_start), int(run_type)])
 
     # Arguments are either individual runs or ranges of runs. We check with a regex
     else:
