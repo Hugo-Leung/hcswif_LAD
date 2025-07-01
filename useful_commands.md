@@ -19,6 +19,8 @@
 
 `mult/add/set`
 
+`-resurrect is required if jobs are already finished`
+
 ## Canceling jobs
 `swif2 cancel <workflow_name>`
 
