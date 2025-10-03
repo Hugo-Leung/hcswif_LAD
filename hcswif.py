@@ -19,8 +19,8 @@ import warnings
 
 std_out = os.path.join("/farm_out/", getpass.getuser(), "lad_replay_stdout/")
 std_err = os.path.join("/farm_out/", getpass.getuser(), "lad_replay_stderr/")
-json_dir = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/hcswif_LAD/jsons")
-tape_out = os.path.join("/mss/hallc/c-lad/analysis/online/replays/")
+json_dir = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "hcswif_LAD/jsons")
+tape_out = os.path.join("/mss/hallc/c-lad/analysis/cleung/replays/")
 voli_path = os.path.join("/volatile/hallc/c-lad/", getpass.getuser())
 if not os.path.isdir(std_out):
     warnings.warn("std_out: " + std_out + " does not exist")
@@ -84,7 +84,7 @@ def parseArgs():
         "--spectrometer",
         nargs=1,
         dest="spectrometer",
-        help="spectrometer to analyze (HMS_ALL, NPS_ALL, HMS_PROD, VLD_REPLAY, NPS_PROD, HMS_COIN, NPS_SKIM, NPS_COIN, NPS_COIN_SCALER, HMS_SCALER, NPS_SCALER)",
+        help="spectrometer to analyze (HMS_ALL, NPS_ALL, HMS_PROD, VLD_REPLAY, NPS_PROD, HMS_COIN, NPS_SKIM, NPS_COIN, NPS_COIN_SCALER, HMS_SCALER, NPS_SCALER, LAD, LAD_COIN)",
     )
     parser.add_argument(
         "--run",
@@ -269,20 +269,25 @@ def getReplayJobs(parsed_args, wf_name):
         raise RuntimeError("all_segs must be True or False")
 
     # Which hcswif shell script should we use? bash or csh?
+    if parsed_args.apptainer:
+        if not os.path.isfile(str(parsed_args.apptainer[0])):
+            warnings.warn("APPTAINER image not found.")
+            sys.exit()
     if parsed_args.shell == None:
         if all_segs == True:
-            batch = os.path.join(hcswif_dir, "hcswif2_n_segs.sh")
+            if parsed_args.apptainer:
+                batch = os.path.join(hcswif_dir, "hcswif2_n_segs_apptainer.sh")
+            else:
+                batch = os.path.join(hcswif_dir, "hcswif2_n_segs.sh")
         else:
-            batch = os.path.join(hcswif_dir, "hcswif2.sh")
+            if parsed_args.apptainer:
+                batch = os.path.join(hcswif_dir, "hcswif2_apptainer.sh")
+            else:
+                batch = os.path.join(hcswif_dir, "hcswif2.sh")
     elif re.search("bash", parsed_args.shell[0]):
         batch = os.path.join(hcswif_dir, "hcswif2.sh")
     elif re.search("csh", parsed_args.shell[0]):
         batch = os.path.join(hcswif_dir, "hcswif.csh")
-    if parsed_args.apptainer:
-        if not os.path.isdir(str(parsed_args.apptainer[0])):
-            warnings.warn("APPTAINER image not found.")
-            sys.exit()
-        batch = os.path.join(hcswif_dir, "hcswif_apptainer.sh")
 
     # Create list of jobs for workflow
     jobs = []
@@ -383,9 +388,9 @@ def getReplayJobs(parsed_args, wf_name):
         # LHE: Not sure what this does
         if parsed_args.specify_replay == None:
             # specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay_versions/lad_replay_v1.0.2.tar.gz")
-            specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay.tar.gz")
+            specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "lad_replay.tar.gz")
             if not os.path.isfile(specify_replay):
-                raise ValueError("No default replay TAR found.")
+                raise ValueError("No default replay TAR found at ", specify_replay)
         else:
             specify_replay = os.path.join(parsed_args.specify_replay[0])
             # LHE Need to specify replay TAR absolute path.
@@ -411,10 +416,14 @@ def getReplayJobs(parsed_args, wf_name):
 
         # Running sum of disk space required, not ideal. Start off with 1GB (for replay)
         tmp_disk = 1000000000
+        if parsed_args.apptainer:
+            tmp_disk += os.path.getsize(str(parsed_args.apptainer[0])) # Add apptainer image size
         if all_segs == True:
             last_seg = run[2] + 1
             first_seg = run[3]
-            tmp_disk = 40000000000 * (run[2]-run[3]) + 30000000000
+            print ("last_seg:", last_seg, " first_seg:", first_seg )
+            tmp_disk += 25000000000 * (run[2]-run[3]+1) # Add 25GB per segment
+            print("Disk space for job (GB): ", tmp_disk/1e9)
             for seg in range(first_seg, last_seg):
                 coda = os.path.join(raw_dir, coda_stem + ".dat." + str(seg))
                 if not os.path.isfile(coda):
@@ -464,23 +473,13 @@ def getReplayJobs(parsed_args, wf_name):
         # job['time_secs'] = int((run[2] / 6000 / 500)*1.1)
 
         # command for job is `/hcswifdir/hcswif.sh REPLAY RUN NUMEVENTS`
+        job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(run[4]), str(run[2]), str(run[3])])]
+        # run number, number of events, file type ID (hard coded for now), max segment
         if parsed_args.apptainer:
-            job["command"] = [
-                " ".join(
-                    [
-                        batch,
-                        replay_script,
-                        str(run),
-                        str(evts),
-                        str(parsed_args.apptainer[0]),
-                        str(raw_dir),
-                    ]
-                )
-            ]
-        else:
-            job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(run[4]), str(run[2]), str(run[3])])]
-            # run number, number of events, file type ID (hard coded for now), max segment
-
+            job["inputs"].append({
+                "local": "apptainer_image.sif",
+                "remote": str(parsed_args.apptainer[0]),
+            })
         jobs.append(copy.deepcopy(job))
 
     return jobs
