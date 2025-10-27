@@ -13,10 +13,14 @@ rawdir=$5
 
 # Modify as you need
 #--------------------------------------------------
-HALLC_REPLAY_DIR="/home/$USER/hallc_replay"   # my replay directory
+VOL_PATH="/volatile/hallc/c-lad/${USER}/"
+WORK_PATH="/work/hallc/c-lad/${USER}/"
+CACHE_PATH="/cache/hallc/c-lad/"
+
+HALLC_REPLAY_DIR="${WORK_PATH}lad_replay_farm"   # my replay directory
 DATA_DIR="${rawdir}"
-ROOT_FILE="/path/to/rootfile/directory"
-REPORT_OUTPUT="/path/to/REPORT_OTUPUT/directory"
+#ROOT_FILE="/path/to/rootfile/directory"
+#REPORT_OUTPUT="/path/to/REPORT_OTUPUT/directory"
 APPTAINER_IMAGE="${apptainer}"
 #--------------------------------------------------
 
@@ -34,11 +38,13 @@ else
     fi
 fi
 
+BIND_PATH="${HALLC_REPLAY_DIR},${DATA_DIR},${VOL_PATH},${WORK_PATH},${CACHE_PATH},/cvmfs"
+
 echo
 echo "---------------------------------------------------------------------------------------------"
 echo "REPLAY for ${runNum}. NEvent=${nEvent} using container=${APPTAINER_IMAGE}"
 echo "----------------------------------------------------------------------------------------------"
 echo
 
-runStr="apptainer exec --bind ${DATA_DIR} --bind ${APPTAINER_IMAGE}--bind ${ROOT_FILE} --bind ${REPORT_OUTPUT} --bind ${HALLC_REPLAY_DIR}  ${APPTAINER_IMAGE} bash -c \"hcana -q ${script}\(${runNum},${nEvent}\)\""
+runStr="apptainer exec --bind ${BIND_PATH}  ${APPTAINER_IMAGE} bash -c \"hcana -l -b -q ${script}\(${runNum},${nEvent}\)\""
 eval ${runStr}

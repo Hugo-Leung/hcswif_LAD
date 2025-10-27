@@ -1,5 +1,8 @@
 #!/usr/bin/bash
 
+#SBATCH --qos=longrun
+#SBATCH --time=3-00:00:00 
+
 ARGC=$#
 if [[ $ARGC -ne 6 ]]; then
     echo Usage: hcswif.sh SCRIPT RUN EVENTS FILETYPE SEG_END SEG_START 
@@ -20,7 +23,16 @@ WORK_PATH="/work/hallc/c-lad/${USER}/"
 CACHE_PATH="/cache/hallc/c-lad/"
 hallc_replay_dir="${WORK_PATH}lad_replay_farm"   # my replay directory
 
-BIND_PATH="${hallc_replay_dir},${VOL_PATH},${WORK_PATH},${CACHE_PATH}"
+PATH_LIST=(${hallc_replay_dir} ${VOL_PATH} ${WORK_PATH} ${CACHE_PATH} "/cvmfs")
+
+#check if the path is already in $APPTAINER_BINDPATH
+for path in "${PATH_LIST[@]}"; do
+    if [[ ",$APPTAINER_BINDPATH," != *",$path,"* ]]; then
+        APPTAINER_BINDPATH="${APPTAINER_BINDPATH},${path}"
+    fi
+done
+
+export APPTAINER_BINDPATH="${APPTAINER_BINDPATH#,}"  # Remove leading comma if exists
 
 # Check if apptainer is available
 if command -v apptainer > /dev/null 2>&1; then
@@ -34,6 +46,11 @@ else
     fi
 fi
 
+apptainer inspect ${apptainer} # To check if the image is valid and print out the labels
+if [ $? -ne 0 ]; then
+    echo "Error: Apptainer image ${apptainer} is not valid."
+    exit 1
+fi
 
 # Replay the run
 runHcana="hcana -q -b -l \"$script($run,$evt,$fileType,1,$seg_end,$seg_start)\""
@@ -41,7 +58,16 @@ runHcana="hcana -q -b -l \"$script($run,$evt,$fileType,1,$seg_end,$seg_start)\""
 
 #cd $hallc_replay_dir
 tar -xf lad_replay.tar.gz
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to extract lad_replay.tar.gz"
+    exit 1
+fi
+
+#check if this is a git repo and print the git hash
+if [ -d ".git" ]; then
+    echo "REPLAY HASH:" $(git rev-parse HEAD) 
+fi
 
 echo pwd: $(pwd)
 echo $runHcana
-apptainer exec --bind ${BIND_PATH}  ${apptainer} bash -c "${runHcana}"
+apptainer exec ${apptainer} bash -c "${runHcana}"

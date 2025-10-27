@@ -19,7 +19,7 @@ fi
 
 for run in $(seq $run_min $run_max); do
 	max_idx=-1
-	for file in /cache/hallc/c-lad/raw/lad_*${run}.dat.*; do
+	for file in /mss/hallc/c-lad/raw/lad_*${run}.dat.*; do
 		idx=$(echo "$file" | sed -n "s/.*\.dat\.\([0-9][0-9]*\)$/\1/p")
 		if [ -n "$idx" ] && [ "$idx" -gt "$max_idx" ]; then
 			max_idx=$idx
@@ -28,7 +28,7 @@ for run in $(seq $run_min $run_max); do
 	config_num=-1
 	for i in "${!run_types[@]}"; do
 		run_type="${run_types[$i]}"
-		if ls /cache/hallc/c-lad/raw/${run_type}_$(printf "%0*d" ${#run} $run).dat.* 1> /dev/null 2>&1; then
+		if ls /mss/hallc/c-lad/raw/${run_type}_$(printf "%0*d" ${#run} $run).dat.* 1> /dev/null 2>&1; then
 			config_num=$i
 			break
 		fi

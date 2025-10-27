@@ -20,7 +20,7 @@ import warnings
 std_out = os.path.join("/farm_out/", getpass.getuser(), "lad_replay_stdout/")
 std_err = os.path.join("/farm_out/", getpass.getuser(), "lad_replay_stderr/")
 json_dir = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "hcswif_LAD/jsons")
-tape_out = os.path.join("/mss/hallc/c-lad/analysis/cleung/replays/")
+tape_out = os.path.join("/mss/hallc/c-lad/analysis/", getpass.getuser() ,"/replays/")
 voli_path = os.path.join("/volatile/hallc/c-lad/", getpass.getuser())
 if not os.path.isdir(std_out):
     warnings.warn("std_out: " + std_out + " does not exist")
@@ -76,7 +76,13 @@ def main():
 
 # ------------------------------------------------------------------------------
 def parseArgs():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Ensure your analyzer can compile with the default OS",
+        epilog=(
+            "Currently no check on constraints. See the scicomp Slurm Info page "
+            "for the latest constraints."
+        ),
+    )
 
     # Add arguments
     parser.add_argument("--mode", nargs=1, dest="mode", help="type of workflow (replay or command)")
@@ -125,7 +131,14 @@ def parseArgs():
         help="max run time per job in seconds allowed before killing jobs",
     )
     parser.add_argument(
-        "--shell", nargs=1, dest="shell", help="Currently a shell cannot be specified in SWIF2"
+        "--shell",
+        nargs=1,
+        dest="shell",
+        help=(
+            "Specify wrapper shell to use for batch scripts: 'bash' or 'csh'. "
+            "If not provided, an appropriate batch script is selected based on "
+            "other options (all_segs, apptainer)."
+        ),
     )
     parser.add_argument(
         "--to_mss", nargs=1, dest="to_mss", help="Write the output to mss, default is false"
@@ -140,7 +153,10 @@ def parseArgs():
         "--specify_replay",
         nargs=1,
         dest="specify_replay",
-        help="Specify the TAR for this nps_replay. Absolute path, default is assumed /group/nps/$USER/nps_replay.tar.gz.",
+        help=(
+            "Specify the TAR for this lad_replay (absolute path). "
+            "Default is /work/hallc/c-lad/<user>/lad_replay.tar.gz"
+        ),
     )
     parser.add_argument(
         "--constraint",
@@ -152,10 +168,7 @@ def parseArgs():
         "--apptainer", nargs=1, dest="apptainer", help="Specify path to apptainer image."
     )
 
-    print("Ensure your analyzer can compule with the default OS")
-    print(
-        "Currently no check on constraints.  See the scicomp Slurm Info page for the latest constraints."
-    )
+    # Description and additional notes are shown in argparse help via description/epilog
     # Check if any args specified
     if len(sys.argv) < 2:
         raise RuntimeError(parser.print_help())
@@ -271,7 +284,7 @@ def getReplayJobs(parsed_args, wf_name):
     # Which hcswif shell script should we use? bash or csh?
     if parsed_args.apptainer:
         if not os.path.isfile(str(parsed_args.apptainer[0])):
-            warnings.warn("APPTAINER image not found.")
+            warnings.warn("Apptainer image not found.")
             sys.exit()
     if parsed_args.shell == None:
         if all_segs == True:
@@ -390,7 +403,7 @@ def getReplayJobs(parsed_args, wf_name):
             # specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay_versions/lad_replay_v1.0.2.tar.gz")
             specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "lad_replay.tar.gz")
             if not os.path.isfile(specify_replay):
-                raise ValueError("No default replay TAR found at ", specify_replay)
+                raise ValueError("No default replay TAR found at " + specify_replay)
         else:
             specify_replay = os.path.join(parsed_args.specify_replay[0])
             # LHE Need to specify replay TAR absolute path.
@@ -432,6 +445,16 @@ def getReplayJobs(parsed_args, wf_name):
                 inp["local"] = os.path.basename(coda)
                 inp["remote"] = coda
                 job["inputs"].append(inp)
+            if (0<first_seg):
+                coda = os.path.join(raw_dir, coda_stem + ".dat." + str(0))
+                if not os.path.isfile(coda):
+                    warnings.warn("RAW DATA: " + coda + " does not exist.")
+                inp = {}
+                inp["local"] = os.path.basename(coda)
+                inp["remote"] = coda
+                job["inputs"].append(inp)
+                tmp_disk += 25000000000 
+                
         else:
             # Specify file size as 20GB by hand, not ideal.
             tmp_disk += int(20000000000)
