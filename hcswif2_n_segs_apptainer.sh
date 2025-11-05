@@ -1,19 +1,18 @@
 #!/usr/bin/bash
 
-#SBATCH --qos=longrun
-#SBATCH --time=3-00:00:00 
 
 ARGC=$#
-if [[ $ARGC -ne 6 ]]; then
-    echo Usage: hcswif.sh SCRIPT RUN EVENTS FILETYPE SEG_END SEG_START 
+if [[ $ARGC -ne 7 ]]; then
+    echo Usage: hcswif.sh SCRIPT RUN NUM_EVENTS FIRST_EVENTFILETYPE SEG_END SEG_START 
     exit 1
 fi;
 script=$1
 run=$2
 evt=$3
-fileType=$4
-seg_end=$5
-seg_start=$6
+firstEvt=$4
+fileType=$5
+seg_end=$6
+seg_start=$7
 apptainer="apptainer_image.sif"
 
 #Define paths - modify as you need
@@ -53,7 +52,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Replay the run
-runHcana="hcana -q -b -l \"$script($run,$evt,$fileType,1,$seg_end,$seg_start)\""
+runHcana="hcana -q -b -l \"$script($run,$evt,$fileType,$firstEvt,$seg_end,$seg_start)\""
 #runHcana="hcana -q \"$script($run,$evt)\""
 
 #cd $hallc_replay_dir

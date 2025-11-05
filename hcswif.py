@@ -11,6 +11,7 @@ import getpass
 import argparse
 import datetime
 import warnings
+import math
 
 # ------------------------------------------------------------------------------
 # Define environment
@@ -165,6 +166,12 @@ def parseArgs():
         help="user defined SWIF2 constraints (slurm feature).  Space separated if multiple",
     )
     parser.add_argument(
+        "--split_segs",
+        nargs=2,
+        dest="split_segs",
+        help="Specify how to split segments across jobs: number of events per job and estimate number of events per segment."
+    )
+    parser.add_argument(
         "--apptainer", nargs=1, dest="apptainer", help="Specify path to apptainer image."
     )
 
@@ -280,6 +287,19 @@ def getReplayJobs(parsed_args, wf_name):
         all_segs = False
     else:
         raise RuntimeError("all_segs must be True or False")
+    
+    if parsed_args.split_segs != None:
+        if evts != -1:
+            warnings.warn("Ignoring --events since --split_segs is specified.\n Using events per job from --split_segs.")
+        evts = int(parsed_args.split_segs[0]) 
+        est_evts_per_seg = int(parsed_args.split_segs[1])
+        nJobs_per_Seg = max(1, math.ceil(est_evts_per_seg / evts)) #number of jobs per segment, rounded up
+        print("Splitting segments into", nJobs_per_Seg, "jobs per segment, with", evts, "events per job.")
+    else:
+        nJobs_per_Seg = 1
+        est_evts_per_seg = -1
+
+        
 
     # Which hcswif shell script should we use? bash or csh?
     if parsed_args.apptainer:
@@ -306,204 +326,210 @@ def getReplayJobs(parsed_args, wf_name):
     jobs = []
 
     for run in runs:
-        job = {}
+        for seg_job in range(nJobs_per_Seg):
+            job = {}
 
-        # Assume coda stem looks like shms_all_XXXXX, hms_all_XXXXX, or coin_all_XXXXX
-        if "lad" in spectrometer.lower():
-            run_types = [
-                "lad_Production",
-                "lad_Production_noGEM",
-                "lad_LADwGEMwROC2",
-                "lad_GEMonly",
-                "lad_LADonly",
-                "lad_SHMS_HMS",
-                "lad_SHMS",
-                "lad_HMS",
-            ]
-            coda_stem = run_types[run[4]]+"_" + str(run[0]).zfill(4)
-        elif "coin" in spectrometer.lower():
-            # shms_coin and hms_coin use same coda files as coin
-            coda_stem = "nps_coin_" + str(run[0]).zfill(4)
-        elif "all" in spectrometer.lower():
-            # otherwise hms_all_XXXXX or shms_all_XXXXX
-            all_spec = spectrometer.replace("_ALL", "")
-            coda_stem = "nps_coin_" + str(run[0]).zfill(4)
-        elif "prod" in spectrometer.lower():
-            # otherwise hms_all_XXXXX or shms_all_XXXXX
-            prod_spec = spectrometer.replace("_PROD", "")
-            coda_stem = "nps_coin_" + str(run[0]).zfill(4)
-        elif "scaler" in spectrometer.lower():
-            # otherwise hms_all_XXXXX or shms_all_XXXXX
-            scaler_spec = spectrometer.replace("_SCALER", "")
-            coda_stem = "nps_coin_" + str(run[0]).zfill(4)
-        else:
-            # otherwise hms_all_XXXXX or shms_all_XXXXX
-            coda_stem = "nps_coin_" + str(run[0]).zfill(4)
-
-        #        if (run[0] > 11000 and 'shms' in spectrometer.lower()) :
-        #           coda = os.path.join(sp22_raw_dir, coda_stem + '.dat')
-        #        elif (run[0] > 4000 and 'hms' in spectrometer.lower()) :
-        #           coda = os.path.join(sp22_raw_dir, coda_stem + '.dat')
-        # if(run[0]>4300 and run[0] < 16940 and 'hms' in spectrometer.lower()):
-        # coda = os.path.join(sp22_raw_dir, coda_stem + '.dat')
-        # elif (run[0] > 16940 and run[0] < 17144 and 'hms' in spectrometer.lower()) :
-        # These are all COIN run[0]s.
-        # coda_stem = 'shms_all_' + str(run[0]).zfill(5)
-        # coda = os.path.join(cafe_raw_dir, coda_stem + '.dat')
-
-        # TODO: Add option to run all segements of a run as output.
-        # if parsed_args.all_segments==None:
-        # Check if raw data file exist
-        coda = os.path.join(raw_dir, coda_stem + ".dat." + str(run[2]))
-        coda0 = os.path.join(raw_dir, coda_stem + ".dat.0")
-        if not os.path.isfile(coda):
-            warnings.warn("RAW DATA: " + coda + " does not exist.")
-        if not os.path.isfile(coda0):
-            warnings.warn("RAW DATA: " + coda0 + " does not exist.")
-            # continue
-
-            # TODO: Fix collision between HMS rootfile names
-        output_dict = {
-            "LAD_COIN": "ROOTfiles/LAD_COIN/PRODUCTION/lad_replay_production_%d_%d_%d.root",
-            "LAD": "ROOTfiles/LAD/PRODUCTION/lad_only_replay_production_%d_%d_%d.root",
-            "HMS_ALL": "ROOTfiles/hms_replay_production_all_%d_%d_%d.root",
-            "NPS_ALL": "",
-            "HMS_PROD": "ROOTfiles/HMS/PRODUCTION/hms_replay_production_%d_%d_%d.root",
-            "NPS_PROD": "",
-            "VLD_REPLAY": "ROOTfiles/nps_%d.root",
-            "HMS_COIN": "ROOTfiles/HMS/PRODUCTION/hms_replay_production_%d_%d_%d.root",
-            "NPS_SKIM": "ROOTfiles/COIN/SKIM/nps_hms_skim_%d_%d_%d.root",
-            "NPS_COIN": "ROOTfiles/COIN/PRODUCTION/nps_hms_coin_%d_%d_1_%d.root",
-            "NPS_COIN_SCALER": "",
-            "HMS_SCALER": "ROOTfiles/HMS/SCALARS/hms_replay_scalars_%d_%d_%d.root",
-            "NPS_SCALER": "",
-        }
-        script_output = output_dict[spectrometer.upper()]
-
-        # No output tape path determined yet.
-        output_path_dict = {
-            "LAD_COIN": "",
-            "LAD": "",
-            "HMS_ALL": "",
-            "NPS_ALL": "",
-            "HMS_PROD": "",
-            "NPS_PROD": "",
-            "VLD_REPLAY": "",
-            "HMS_COIN": "",
-            "NPS_SKIM": "production/",
-            "NPS_COIN": "",
-            "NPS_COIN_SCALER": "",
-            "HMS_SCALER": "",
-            "NPS_SCALER": "",
-        }
-        output_path = output_path_dict[spectrometer.upper()]
-
-        # LHE: Not sure what this does
-        if parsed_args.specify_replay == None:
-            # specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay_versions/lad_replay_v1.0.2.tar.gz")
-            specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "lad_replay.tar.gz")
-            if not os.path.isfile(specify_replay):
-                raise ValueError("No default replay TAR found at " + specify_replay)
-        else:
-            specify_replay = os.path.join(parsed_args.specify_replay[0])
-            # LHE Need to specify replay TAR absolute path.
-            if not os.path.isfile(specify_replay):
-                raise ValueError('User defined replay path and TAR must be valid.')
-
-        if parsed_args.to_mss == None:
-            to_mss = False
-        elif parsed_args.to_mss[0].lower() == "true":
-            to_mss = True
-            # to_mss = False #Currently don't want things in MSS
-        elif parsed_args.to_mss[0].lower() == "false":
-            to_mss = False
-        else:
-            raise RuntimeError("to_mss must be True or False")
-
-        job["name"] = wf_name + "_" + coda_stem + ".dat." + str(run[2])
-        job["constraint"] = processConstraints(parsed_args.constraint)
-        # job["name"] = wf_name + "_" + coda_stem
-        job["inputs"] = [{}]
-        job["inputs"][0]["local"] = "lad_replay.tar.gz"
-        job["inputs"][0]["remote"] = specify_replay
-
-        # Running sum of disk space required, not ideal. Start off with 1GB (for replay)
-        tmp_disk = 1000000000
-        if parsed_args.apptainer:
-            tmp_disk += os.path.getsize(str(parsed_args.apptainer[0])) # Add apptainer image size
-        if all_segs == True:
-            last_seg = run[2] + 1
-            first_seg = run[3]
-            print ("last_seg:", last_seg, " first_seg:", first_seg )
-            tmp_disk += 25000000000 * (run[2]-run[3]+1) # Add 25GB per segment
-            print("Disk space for job (GB): ", tmp_disk/1e9)
-            for seg in range(first_seg, last_seg):
-                coda = os.path.join(raw_dir, coda_stem + ".dat." + str(seg))
-                if not os.path.isfile(coda):
-                    warnings.warn("RAW DATA: " + coda + " does not exist.")
-                inp = {}
-                inp["local"] = os.path.basename(coda)
-                inp["remote"] = coda
-                job["inputs"].append(inp)
-            if (0<first_seg):
-                coda = os.path.join(raw_dir, coda_stem + ".dat." + str(0))
-                if not os.path.isfile(coda):
-                    warnings.warn("RAW DATA: " + coda + " does not exist.")
-                inp = {}
-                inp["local"] = os.path.basename(coda)
-                inp["remote"] = coda
-                job["inputs"].append(inp)
-                tmp_disk += 25000000000 
-                
-        else:
-            # Specify file size as 20GB by hand, not ideal.
-            tmp_disk += int(20000000000)
-            job["inputs"].append({})
-            job["inputs"][1]["local"] = os.path.basename(coda0)
-            job["inputs"][1]["remote"] = coda0
-            # print(coda0)
-            job["inputs"].append({})
-            job["inputs"][2]["local"] = os.path.basename(coda)
-            job["inputs"][2]["remote"] = coda
-            tmp_disk += int(20000000000)
-            # print(coda)
-        if to_mss:
-            # DOES NOT WORK FOR EVERYTHING!!!
-            job["outputs"] = [{}]
-            if spectrometer.upper() == "NPS_SKIM":
-                job["outputs"][0]["local"] = script_output % (int(run[0]), int(1), int(-1))
-                job["outputs"][0]["remote"] = (
-                    tape_out
-                    + output_path
-                    + (os.path.basename(script_output % (int(run[0]), int(1), int(-1))))
-                )
+            # Assume coda stem looks like shms_all_XXXXX, hms_all_XXXXX, or coin_all_XXXXX
+            if "lad" in spectrometer.lower():
+                run_types = [
+                    "lad_Production",
+                    "lad_Production_noGEM",
+                    "lad_LADwGEMwROC2",
+                    "lad_GEMonly",
+                    "lad_LADonly",
+                    "lad_SHMS_HMS",
+                    "lad_SHMS",
+                    "lad_HMS",
+                ]
+                coda_stem = run_types[run[4]]+"_" + str(run[0]).zfill(4)
+            elif "coin" in spectrometer.lower():
+                # shms_coin and hms_coin use same coda files as coin
+                coda_stem = "nps_coin_" + str(run[0]).zfill(4)
+            elif "all" in spectrometer.lower():
+                # otherwise hms_all_XXXXX or shms_all_XXXXX
+                all_spec = spectrometer.replace("_ALL", "")
+                coda_stem = "nps_coin_" + str(run[0]).zfill(4)
+            elif "prod" in spectrometer.lower():
+                # otherwise hms_all_XXXXX or shms_all_XXXXX
+                prod_spec = spectrometer.replace("_PROD", "")
+                coda_stem = "nps_coin_" + str(run[0]).zfill(4)
+            elif "scaler" in spectrometer.lower():
+                # otherwise hms_all_XXXXX or shms_all_XXXXX
+                scaler_spec = spectrometer.replace("_SCALER", "")
+                coda_stem = "nps_coin_" + str(run[0]).zfill(4)
             else:
-                job["outputs"][0]["local"] = script_output % (int(run[0]), int(run[2]), int(evts))
-                job["outputs"][0]["remote"] = (
-                    tape_out
-                    + output_path
-                    + (os.path.basename(script_output % (int(run[0]), int(run[2]), int(evts))))
-                )
-        # This is for replay of all segments.
-        # job['disk_bytes'] =
-        # This is for segment jobs.
-        # job['disk_bytes'] = 2*run[1] + 30000000000
-        #LHE: Need to figure out how to get correct disk space for replay jobs.
-        job["disk_bytes"] = tmp_disk
-        # if spectrometer.upper()=='NPS_PROD':
-        # job['time_secs'] = int((run[2] / 6000 / 75)*1.2)
-        # elif spectrometer.upper()=='NPS_SCALER':
-        # job['time_secs'] = int((run[2] / 6000 / 500)*1.1)
+                # otherwise hms_all_XXXXX or shms_all_XXXXX
+                coda_stem = "nps_coin_" + str(run[0]).zfill(4)
 
-        # command for job is `/hcswifdir/hcswif.sh REPLAY RUN NUMEVENTS`
-        job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(run[4]), str(run[2]), str(run[3])])]
-        # run number, number of events, file type ID (hard coded for now), max segment
-        if parsed_args.apptainer:
-            job["inputs"].append({
-                "local": "apptainer_image.sif",
-                "remote": str(parsed_args.apptainer[0]),
-            })
-        jobs.append(copy.deepcopy(job))
+            #        if (run[0] > 11000 and 'shms' in spectrometer.lower()) :
+            #           coda = os.path.join(sp22_raw_dir, coda_stem + '.dat')
+            #        elif (run[0] > 4000 and 'hms' in spectrometer.lower()) :
+            #           coda = os.path.join(sp22_raw_dir, coda_stem + '.dat')
+            # if(run[0]>4300 and run[0] < 16940 and 'hms' in spectrometer.lower()):
+            # coda = os.path.join(sp22_raw_dir, coda_stem + '.dat')
+            # elif (run[0] > 16940 and run[0] < 17144 and 'hms' in spectrometer.lower()) :
+            # These are all COIN run[0]s.
+            # coda_stem = 'shms_all_' + str(run[0]).zfill(5)
+            # coda = os.path.join(cafe_raw_dir, coda_stem + '.dat')
+
+            # TODO: Add option to run all segements of a run as output.
+            # if parsed_args.all_segments==None:
+            # Check if raw data file exist
+            coda = os.path.join(raw_dir, coda_stem + ".dat." + str(run[2]))
+            coda0 = os.path.join(raw_dir, coda_stem + ".dat.0")
+            if not os.path.isfile(coda):
+                warnings.warn("RAW DATA: " + coda + " does not exist.")
+            if not os.path.isfile(coda0):
+                warnings.warn("RAW DATA: " + coda0 + " does not exist.")
+                # continue
+
+                # TODO: Fix collision between HMS rootfile names
+            output_dict = {
+                "LAD_COIN": "ROOTfiles/LAD_COIN/PRODUCTION/lad_replay_production_%d_%d_%d.root",
+                "LAD": "ROOTfiles/LAD/PRODUCTION/lad_only_replay_production_%d_%d_%d.root",
+                "HMS_ALL": "ROOTfiles/hms_replay_production_all_%d_%d_%d.root",
+                "NPS_ALL": "",
+                "HMS_PROD": "ROOTfiles/HMS/PRODUCTION/hms_replay_production_%d_%d_%d.root",
+                "NPS_PROD": "",
+                "VLD_REPLAY": "ROOTfiles/nps_%d.root",
+                "HMS_COIN": "ROOTfiles/HMS/PRODUCTION/hms_replay_production_%d_%d_%d.root",
+                "NPS_SKIM": "ROOTfiles/COIN/SKIM/nps_hms_skim_%d_%d_%d.root",
+                "NPS_COIN": "ROOTfiles/COIN/PRODUCTION/nps_hms_coin_%d_%d_1_%d.root",
+                "NPS_COIN_SCALER": "",
+                "HMS_SCALER": "ROOTfiles/HMS/SCALARS/hms_replay_scalars_%d_%d_%d.root",
+                "NPS_SCALER": "",
+            }
+            script_output = output_dict[spectrometer.upper()]
+
+            # No output tape path determined yet.
+            output_path_dict = {
+                "LAD_COIN": "",
+                "LAD": "",
+                "HMS_ALL": "",
+                "NPS_ALL": "",
+                "HMS_PROD": "",
+                "NPS_PROD": "",
+                "VLD_REPLAY": "",
+                "HMS_COIN": "",
+                "NPS_SKIM": "production/",
+                "NPS_COIN": "",
+                "NPS_COIN_SCALER": "",
+                "HMS_SCALER": "",
+                "NPS_SCALER": "",
+            }
+            output_path = output_path_dict[spectrometer.upper()]
+
+            # LHE: Not sure what this does
+            if parsed_args.specify_replay == None:
+                # specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "software/lad_replay_versions/lad_replay_v1.0.2.tar.gz")
+                specify_replay = os.path.join("/work/hallc/c-lad/", getpass.getuser(), "lad_replay.tar.gz")
+                if not os.path.isfile(specify_replay):
+                    raise ValueError("No default replay TAR found at " + specify_replay)
+            else:
+                specify_replay = os.path.join(parsed_args.specify_replay[0])
+                # LHE Need to specify replay TAR absolute path.
+                if not os.path.isfile(specify_replay):
+                    raise ValueError('User defined replay path and TAR must be valid.')
+
+            if parsed_args.to_mss == None:
+                to_mss = False
+            elif parsed_args.to_mss[0].lower() == "true":
+                to_mss = True
+                # to_mss = False #Currently don't want things in MSS
+            elif parsed_args.to_mss[0].lower() == "false":
+                to_mss = False
+            else:
+                raise RuntimeError("to_mss must be True or False")
+
+            job["name"] = wf_name + "_" + coda_stem + ".dat." + str(run[2])
+            if parsed_args.split_segs != None:
+                job["name"] += "_part" + str(seg_job)
+            job["constraint"] = processConstraints(parsed_args.constraint)
+            # job["name"] = wf_name + "_" + coda_stem
+            job["inputs"] = [{}]
+            job["inputs"][0]["local"] = "lad_replay.tar.gz"
+            job["inputs"][0]["remote"] = specify_replay
+
+            # Running sum of disk space required, not ideal. Start off with 1GB (for replay)
+            tmp_disk = 1000000000
+            if parsed_args.apptainer:
+                tmp_disk += os.path.getsize(str(parsed_args.apptainer[0])) # Add apptainer image size
+            if all_segs == True:
+                last_seg = run[2] + 1
+                first_seg = run[3]
+                print ("last_seg:", last_seg, " first_seg:", first_seg )
+                tmp_disk += 25000000000 * (run[2]-run[3]+1) # Add 25GB per segment
+                print("Disk space for job (GB): ", tmp_disk/1e9)
+                for seg in range(first_seg, last_seg):
+                    coda = os.path.join(raw_dir, coda_stem + ".dat." + str(seg))
+                    if not os.path.isfile(coda):
+                        warnings.warn("RAW DATA: " + coda + " does not exist.")
+                    inp = {}
+                    inp["local"] = os.path.basename(coda)
+                    inp["remote"] = coda
+                    job["inputs"].append(inp)
+                if (0<first_seg):
+                    coda = os.path.join(raw_dir, coda_stem + ".dat." + str(0))
+                    if not os.path.isfile(coda):
+                        warnings.warn("RAW DATA: " + coda + " does not exist.")
+                    inp = {}
+                    inp["local"] = os.path.basename(coda)
+                    inp["remote"] = coda
+                    job["inputs"].append(inp)
+                    tmp_disk += 25000000000 
+                    
+            else:
+                # Specify file size as 20GB by hand, not ideal.
+                tmp_disk += int(20000000000)
+                job["inputs"].append({})
+                job["inputs"][1]["local"] = os.path.basename(coda0)
+                job["inputs"][1]["remote"] = coda0
+                # print(coda0)
+                job["inputs"].append({})
+                job["inputs"][2]["local"] = os.path.basename(coda)
+                job["inputs"][2]["remote"] = coda
+                tmp_disk += int(20000000000)
+                # print(coda)
+            if to_mss:
+                # DOES NOT WORK FOR EVERYTHING!!!
+                job["outputs"] = [{}]
+                if spectrometer.upper() == "NPS_SKIM":
+                    job["outputs"][0]["local"] = script_output % (int(run[0]), int(1), int(-1))
+                    job["outputs"][0]["remote"] = (
+                        tape_out
+                        + output_path
+                        + (os.path.basename(script_output % (int(run[0]), int(1), int(-1))))
+                    )
+                else:
+                    job["outputs"][0]["local"] = script_output % (int(run[0]), int(run[2]), int(evts))
+                    job["outputs"][0]["remote"] = (
+                        tape_out
+                        + output_path
+                        + (os.path.basename(script_output % (int(run[0]), int(run[2]), int(evts))))
+                    )
+            # This is for replay of all segments.
+            # job['disk_bytes'] =
+            # This is for segment jobs.
+            # job['disk_bytes'] = 2*run[1] + 30000000000
+            #LHE: Need to figure out how to get correct disk space for replay jobs.
+            job["disk_bytes"] = tmp_disk
+            # if spectrometer.upper()=='NPS_PROD':
+            # job['time_secs'] = int((run[2] / 6000 / 75)*1.2)
+            # elif spectrometer.upper()=='NPS_SCALER':
+            # job['time_secs'] = int((run[2] / 6000 / 500)*1.1)
+
+            # command for job is `/hcswifdir/hcswif.sh REPLAY RUN NUMEVENTS`
+            first_evt = 1
+            if parsed_args.split_segs != None:
+                first_evt = seg_job * evts + 1
+            job["command"] = [" ".join([batch, replay_script, str(run[0]), str(evts), str(first_evt), str(run[4]), str(run[2]), str(run[3])])]
+            # run number, number of events, file type ID (hard coded for now), max segment
+            if parsed_args.apptainer:
+                job["inputs"].append({
+                    "local": "apptainer_image.sif",
+                    "remote": str(parsed_args.apptainer[0]),
+                })
+            jobs.append(copy.deepcopy(job))
 
     return jobs
 
